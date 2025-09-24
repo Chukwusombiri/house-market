@@ -21,7 +21,7 @@ function App() {
         <Navbar />
         <main className="w-full px-4 sm:px-6 md:px-8 lg:px-10">
           <div className="flex items-center justify-center gap-2 pt-4">
-            <MdAddHomeWork size={26} color="gray"/>
+            <MdAddHomeWork size={26}/>
             <span className="text-green-700 expletus-sans text-xl tracking-wider">HouseMarket</span>
           </div>
           <Outlet />
