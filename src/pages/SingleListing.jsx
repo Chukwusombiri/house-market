@@ -70,6 +70,7 @@ export default function SingleListing({ }) {
           {/* listing content */}
           <div className="md:order-1 lg:col-span-2">
             <h2 className="text-2xl roboto-semibold mb-2">{listing.name}</h2>
+            <p className='text-lg font-semibold mb-2'>Location: <span className='roboto-extralight'>{listing.location}</span></p>
             <p className='text-lg font-semibold'>Price: <span className='expletus-sans'>${listing.offer ? listing.discountedPrice.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",") : listing.regularPrice.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span></p>
             <div className="flex items-center mt-2 gap-3">
               <span className="bg-gray-800 text-white rounded-full text-xs uppercase tracking-wide px-4 py-2 roboto-bold">For {listing.type == 'rent' ? 'rent' : 'sale'}</span>

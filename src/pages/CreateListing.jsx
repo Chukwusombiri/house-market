@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import useAuthContext from '../contexts/AuthContext'
 import PageHeader from '../components/PageHeader';
 import { useNavigate } from 'react-router-dom';
@@ -57,6 +57,7 @@ export default function CreateListing() {
     const [address, setAddress] = useState('');
     const [addressSuggestions, setAddressSuggestions] = useState(null)
     const [submitting, setSubmitting] = useState(false)
+    const suggestionRef = useRef();
 
     const imagesToDisplay = images.map(img => {
         const tempImg = URL.createObjectURL(img);
@@ -71,35 +72,63 @@ export default function CreateListing() {
         setFormData({ ...formData, [field]: newValue });
     }
 
-    // search address
-    const searchAddress = async () => {
-        if (address.length < 6) return;
-
-        const params = new URLSearchParams({
-            q: address,
-            access_token: mapboxAccessToken,
-            limit: 6,
-            type: 'address'
-        })
-
-        const url = `${mapboxSearchUrl}?${params}`
-        try {
-            const response = await axios.get(url);
-            const results = (response.data.features).map(feature => {
-                const { id, properties: { name, name_preferred, place_formatted, full_address, coordinates: { longitude, latitude } } } = feature
-                return {
-                    id,
-                    address: full_address ?? `${name_preferred || name}, ${place_formatted}`,
-                    lng: longitude,
-                    lat: latitude
-                }
-            })
-            setAddressSuggestions([...results]);
-        } catch (error) {
-            console.error(error);
+    // Fetch suggestions when address changes and length >= 6
+    useEffect(() => {
+        if (address.length < 6) {
             setAddressSuggestions(null);
+            return;
         }
-    }
+
+        const controller = new AbortController();
+        const fetchSuggestions = async () => {
+            try {
+                const params = new URLSearchParams({
+                    q: address,
+                    access_token: mapboxAccessToken,
+                    limit: 6,
+                    type: "address",
+                });
+
+                const url = `${mapboxSearchUrl}?${params}`;
+                const response = await axios.get(url, { signal: controller.signal });
+
+                const results = response.data.features.map(feature => {
+                    const {
+                        id,
+                        properties: {
+                            name,
+                            name_preferred,
+                            place_formatted,
+                            full_address,
+                            coordinates: { longitude, latitude },
+                        },
+                    } = feature;
+
+                    return {
+                        id,
+                        address: full_address ?? `${name_preferred || name}, ${place_formatted}`,
+                        lng: longitude,
+                        lat: latitude,
+                    };
+                });
+
+                setAddressSuggestions(results);
+            } catch (error) {
+                if (error.name !== "CanceledError") {
+                    console.error(error);
+                    setAddressSuggestions(null);
+                }
+            }
+        };
+
+        // debounce ~400ms
+        const debounceId = setTimeout(fetchSuggestions, 400);
+
+        return () => {
+            clearTimeout(debounceId);
+            controller.abort();
+        };
+    }, [address, mapboxAccessToken, mapboxSearchUrl]);
 
     // select address
     const handleSelectAddress = (obj) => {
@@ -191,6 +220,23 @@ export default function CreateListing() {
         setFormData(prev => ({ ...prev, userId: authUser.uid }))
     }, [authUser])
 
+
+    // clear drop-down click outside
+    useEffect(() => {
+        const clearSuggestion = (evt) => {
+            if(suggestionRef.current && !suggestionRef.current.contains(evt.target)){
+                setAddressSuggestions(null);
+            } 
+
+        }
+        window.addEventListener('click', clearSuggestion);
+
+        return () => {
+            window.removeEventListener('click',clearSuggestion);
+        }
+    })
+
+    // submitting state
     if(submitting){
         return <Loader />
     }
@@ -251,14 +297,13 @@ export default function CreateListing() {
                                                 name="address"
                                                 id="address"
                                                 value={address}
-                                                onChange={(evt) => setAddress(evt.target.value)}
-                                                onFocus={searchAddress}
+                                                onChange={(evt) => setAddress(evt.target.value)}                                                
                                                 placeholder="Enter address for this listing ..."
                                                 required
                                             />
                                             {
                                                 addressSuggestions && (
-                                                    <div className="absolute top-full h-56 w-full z-10 mt-2 flex">
+                                                    <div ref={suggestionRef} className="absolute top-full h-56 w-full z-10 mt-2 flex">
                                                         <div className="w-full h-full bg-white shadow rounded-lg overflow-x-hidden overlow-y-auto">
                                                             {
                                                                 addressSuggestions.map(addr => (

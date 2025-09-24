@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader';
 import useAuthContext from '../contexts/AuthContext';
@@ -43,6 +43,7 @@ export default function EditListing() {
     const [geoLocationEnabled, setGeoLocationEnabled] = useState(false);
     const [address, setAddress] = useState('');
     const [addressSuggestions, setAddressSuggestions] = useState(null)
+    const suggestionRef = useRef();
 
     const imagesToDisplay = imageUrls ? imageUrls.map(img => {
         if (typeof img == 'string') return img;
@@ -58,35 +59,65 @@ export default function EditListing() {
         setFormData({ ...formData, [field]: newValue });
     }
 
-    // search address
-    const searchAddress = async () => {
-        if (address.length < 8) return;
+    // Fetch suggestions when address changes and length >= 6
 
-        const params = new URLSearchParams({
-            q: address,
-            access_token: mapboxAccessToken,
-            limit: 6,
-            type: 'address'
-        })
+    useEffect(() => {
 
-        const url = `${mapboxSearchUrl}?${params}`
-        try {
-            const response = await axios.get(url);
-            const results = (response.data.features).map(feature => {
-                const { id, properties: { name, name_preferred, place_formatted, full_address, coordinates: { longitude, latitude } } } = feature
-                return {
-                    id,
-                    address: full_address ?? `${name_preferred || name}, ${place_formatted}`,
-                    lng: longitude,
-                    lat: latitude
-                }
-            })
-            setAddressSuggestions([...results]);
-        } catch (error) {
-            console.error(error);
+        if (address.length < 6) {
             setAddressSuggestions(null);
+            return;
         }
-    }
+
+        const controller = new AbortController();
+        const fetchSuggestions = async () => {
+            try {
+                const params = new URLSearchParams({
+                    q: address,
+                    access_token: mapboxAccessToken,
+                    limit: 6,
+                    type: "address",
+                });
+
+                const url = `${mapboxSearchUrl}?${params}`;
+                const response = await axios.get(url, { signal: controller.signal });
+
+                const results = response.data.features.map(feature => {
+                    const {
+                        id,
+                        properties: {
+                            name,
+                            name_preferred,
+                            place_formatted,
+                            full_address,
+                            coordinates: { longitude, latitude },
+                        },
+                    } = feature;
+
+                    return {
+                        id,
+                        address: full_address ?? `${name_preferred || name}, ${place_formatted}`,
+                        lng: longitude,
+                        lat: latitude,
+                    };
+                });
+
+                setAddressSuggestions(results);
+            } catch (error) {
+                if (error.name !== "CanceledError") {
+                    console.error(error);
+                    setAddressSuggestions(null);
+                }
+            }
+        };
+
+        // debounce ~400ms
+        const debounceId = setTimeout(fetchSuggestions, 400);
+
+        return () => {
+            clearTimeout(debounceId);
+            controller.abort();
+        };
+    }, [address, mapboxAccessToken, mapboxSearchUrl]);
 
     // select address
     const handleSelectAddress = (obj) => {
@@ -216,8 +247,20 @@ export default function EditListing() {
         fetchDoc();
     }, [listingId, authUser])
 
+    // clear drop-down click outside
+    useEffect(() => {
+        const clearSuggestion = (evt) => {
+            if (suggestionRef.current && !suggestionRef.current.contains(evt.target)) {
+                setAddressSuggestions(null);
+            }
 
+        }
+        window.addEventListener('click', clearSuggestion);
 
+        return () => {
+            window.removeEventListener('click', clearSuggestion);
+        }
+    })
     return !authUser ? null : (
         formData
             ? (
@@ -281,14 +324,13 @@ export default function EditListing() {
                                                                 name="address"
                                                                 id="address"
                                                                 value={address}
-                                                                onChange={(evt) => setAddress(evt.target.value)}
-                                                                onFocus={searchAddress}
+                                                                onChange={(evt) => setAddress(evt.target.value)}                                                        
                                                                 placeholder="Enter address for this listing ..."
                                                                 required
                                                             />
                                                             {
                                                                 addressSuggestions && (
-                                                                    <div className="absolute top-full h-56 w-full z-10 mt-2 flex">
+                                                                    <div ref={suggestionRef} className="absolute top-full h-56 w-full z-10 mt-2 flex">
                                                                         <div className="w-full h-full bg-white shadow rounded-lg overflow-x-hidden overlow-y-auto">
                                                                             {
                                                                                 addressSuggestions.map(addr => (
@@ -454,7 +496,7 @@ export default function EditListing() {
                                     </div>
                                     <div className="flex justify-center mt-6">
                                         <div className="w-full md:w-3/6 lg:w-2/6 xl-w-max-content mx-auto flex flex-col">
-                                            <SecondaryButton type="submit">Create listing</SecondaryButton>
+                                            <SecondaryButton type="submit">Update listing</SecondaryButton>
                                         </div>
                                     </div>
                                 </form>
